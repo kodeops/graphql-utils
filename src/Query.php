@@ -23,7 +23,7 @@ class Query
             'operationName' => "GenericQuery",
         ];
 
-        return $this->resolve($body, $method);
+        return $this->request($body, $method);
     }
 
     private function request(array $body, $method, $all_results = false)
