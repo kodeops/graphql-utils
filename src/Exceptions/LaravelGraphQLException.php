@@ -1,5 +1,5 @@
 <?php
-namespace LaravelGraphQL\Exceptions;
+namespace kodeops\LaravelGraphQL\Exceptions;
 
 use Exception;
 
