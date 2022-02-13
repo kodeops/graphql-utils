@@ -15,7 +15,7 @@ class Query
         $this->offset = $offset ?? env('LARAVEL_GRAPHQL_OFFSET');
     }
 
-    public function query($query, $method, $variables)
+    public function resolve($query, $method, $variables)
     {
         $body = [
             'query' => $query,
@@ -26,7 +26,7 @@ class Query
         return $this->resolve($body, $method);
     }
 
-    private function resolve(array $body, $method, $all_results = false)
+    private function request(array $body, $method, $all_results = false)
     {
         // $all_results is used to automatically paginate through results
         if (! $this->endpoint) {
