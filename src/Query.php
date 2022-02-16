@@ -17,20 +17,32 @@ class Query
         $this->max_request_per_minute = $max_request_per_minute ?? env('LARAVEL_GRAPHQL_MAX_REQUEST_PER_MINUTE');
     }
 
-    public function resolve($query, $method, $variables)
+    public function build($query, $variables)
     {
-        $body = [
+        $query_needle = 'query ';
+        if (substr($query, 0, 6) != $query_needle) {
+            throw new LaravelGraphQLException("Invalid query format (must start with 'query ' {$query}");
+        }
+
+        // Extract operation name from $query
+        // Eg: "query GenericQuery(" to "GenericQuery"
+        $operationName = explode('query ', $query);
+        $operationName = explode('(', $operationName[1])[0];
+
+        return [
             'query' => $query,
             'variables' => $variables,
-            'operationName' => "GenericQuery",
+            'operationName' => $operationName,
         ];
-
-        return $this->request($body, $method);
     }
 
-    private function request(array $body, $method, $all_results = false)
+    public function resolve($query, $variables)
     {
-        // $all_results is used to automatically paginate through results
+        return $this->request($this->build($query, $variables));
+    }
+
+    private function request(array $body)
+    {
         if (! $this->endpoint) {
             throw new LaravelGraphQLException("Undefined GraphQL endpoint");
         }
@@ -44,14 +56,25 @@ class Query
         $response = $request->json();
         
         if (isset($response['errors'])) {
-            throw new LaravelGraphQLException("Invalid GraphQL response: {$response['errors'][0]['message']}");
+            throw new LaravelGraphQLException("GraphQL error: {$response['errors'][0]['message']}");
         }
 
         if (! isset($response['data'])) {
             throw new LaravelGraphQLException("Invalid GraphQL structure: missing data");
         }
 
-        $data = $response['data'][$method];
+        return $response;
+    }
+
+    private function paginate(array $body, $entity, $pages)
+    {
+        $response = $this->request($body);
+
+        if (! isset($response[$entity])) {
+            throw new LaravelGraphQLException("Entity not found: {$entity}");
+        }
+
+        $data = $response['data'][$entity];
         $more_results = count($data) >= $this->offset;
         if (! $more_results OR $all_results) {
             return $data;
@@ -61,7 +84,7 @@ class Query
         $requests_made = 1;
         while ($more_results AND $requests_made < $this->max_request_per_minute) {
             $body['variables']['offset'] = count($data);
-            $new_data = $this->request($body, $method, true);
+            $new_data = $this->request($body, $entity, true);
             $data = array_merge($data, $new_data);
             $more_results = count($new_data) >= $this->offset;
             $requests_made++;
