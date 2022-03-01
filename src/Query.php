@@ -9,19 +9,31 @@ class Query
     protected $endpoint;
     protected $offset;
     protected $max_request_per_minute;
+    protected $fragments;
 
     public function __construct($endpoint = null, $offset = null, $max_request_per_minute = null)
     {
         $this->endpoint = $endpoint ?? env('LARAVEL_GRAPHQL_ENDPOINT');
         $this->offset = $offset ?? env('LARAVEL_GRAPHQL_OFFSET');
         $this->max_request_per_minute = $max_request_per_minute ?? env('LARAVEL_GRAPHQL_MAX_REQUEST_PER_MINUTE');
+        $this->fragments = [];
     }
 
-    public function build($query, $variables)
+    public function addFragment(array $fragments)
+    {
+        $this->fragments = $fragments;
+        return $this;
+    }
+
+    public function build($query, $variables, $fragments = [])
     {
         $query_needle = 'query ';
         if (substr($query, 0, 6) != $query_needle) {
             throw new LaravelGraphQLException("Invalid query format (must start with 'query ' {$query}");
+        }
+
+        if (substr($query, -1) != '}') {
+            throw new LaravelGraphQLException("Invalid query format (must end with '}' {$query}");
         }
 
         // Extract operation name from $query
@@ -29,6 +41,14 @@ class Query
         $operationName = explode('query ', $query);
         $operationName = explode('(', $operationName[1])[0];
 
+        if (count($fragments)) {
+            $add_fragments = '';
+            foreach ($this->fragments as $fragment) {
+                $add_fragments .= PHP_EOL . $fragment . PHP_EOL;
+            }
+
+            $query .= $add_fragments;
+        }
         return [
             'query' => $query,
             'variables' => $variables,
@@ -36,9 +56,10 @@ class Query
         ];
     }
 
-    public function resolve($query, $variables)
+    public function resolve($query, $variables, $fragments = [])
     {
-        return $this->request($this->build($query, $variables));
+        $this->fragments = $fragments;
+        return $this->request($this->build($query, $variables, $fragments));
     }
 
     private function request(array $body)
@@ -48,13 +69,12 @@ class Query
         }
 
         $request = Http::post($this->endpoint, $body);
-    
+
         if ($request->failed()) {
-            throw new LaravelGraphQLException("GraphQL request failed");
+            throw new LaravelGraphQLException("GraphQL request failed: {$request->body()}");
         }
 
         $response = $request->json();
-        
         if (isset($response['errors'])) {
             throw new LaravelGraphQLException("GraphQL error: {$response['errors'][0]['message']}");
         }
