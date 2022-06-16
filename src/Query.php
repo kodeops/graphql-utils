@@ -14,6 +14,11 @@ class Query
     public function __construct($endpoint = null, $offset = null, $max_request_per_minute = null)
     {
         $this->endpoint = $endpoint ?? env('LARAVEL_GRAPHQL_ENDPOINT');
+
+        if (is_null($this->endpoint) OR empty($this->endpoint)) {
+            throw new LaravelGraphQLException("Undefined GraphQL endpoint.");
+        }
+
         $this->offset = $offset ?? env('LARAVEL_GRAPHQL_OFFSET');
         $this->max_request_per_minute = $max_request_per_minute ?? env('LARAVEL_GRAPHQL_MAX_REQUEST_PER_MINUTE');
         $this->fragments = [];
@@ -64,10 +69,6 @@ class Query
 
     private function request(array $body)
     {
-        if (! $this->endpoint) {
-            throw new LaravelGraphQLException("Undefined GraphQL endpoint");
-        }
-
         $request = Http::post($this->endpoint, $body);
 
         if ($request->failed()) {
