@@ -3,13 +3,17 @@ namespace kodeops\LaravelGraphQL;
 
 use Illuminate\Support\Facades\Http;
 use kodeops\LaravelGraphQL\Exceptions\LaravelGraphQLException;
+use Bugsnag\BugsnagLaravel\Facades\Bugsnag;
 
 class Query
 {
+    protected $query;
+    protected $variables;
+    protected $fragments;
+
     protected $endpoint;
     protected $offset;
     protected $max_request_per_minute;
-    protected $fragments;
 
     public function __construct($endpoint = null, $offset = null, $max_request_per_minute = null)
     {
@@ -64,7 +68,11 @@ class Query
     public function resolve($query, $variables, $fragments = [])
     {
         $this->fragments = $fragments;
-        return $this->request($this->build($query, $variables, $fragments));
+        $this->query = $query;
+        $this->variables = $variables;
+        $this->body = $this->build($query, $variables, $fragments);
+
+        return $this->request($this->body);
     }
 
     private function request(array $body)
@@ -72,19 +80,40 @@ class Query
         $request = Http::post($this->endpoint, $body);
 
         if ($request->failed()) {
+            $this->registerCallback($request->body());
             throw new LaravelGraphQLException("GraphQL request failed: {$request->body()}");
         }
 
         $response = $request->json();
         if (isset($response['errors'])) {
+            $this->registerCallback($response);
             throw new LaravelGraphQLException("GraphQL error: {$response['errors'][0]['message']}");
         }
 
         if (! isset($response['data'])) {
+            $this->registerCallback();
             throw new LaravelGraphQLException("Invalid GraphQL structure: missing data");
         }
 
         return $response;
+    }
+
+    private function registerCallback($response = null)
+    {
+        Bugsnag::registerCallback(function ($report) use ($response) {
+            $report->setMetaData([
+                'graphql' => [
+                    'endpoint' => $this->endpoint,
+                    'response' => $response,
+                    'query' => $this->query,
+                    'variables' => $this->variables,
+                    'body' => $this->body,
+                    'fragments' => $this->fragments,
+                    'offset' => $this->offset,
+                    'max_request_per_minute' => $this->max_request_per_minute,
+                ]
+            ]);
+        });
     }
 
     private function paginate(array $body, $entity, $pages)
