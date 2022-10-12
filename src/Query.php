@@ -113,7 +113,7 @@ class Query
                     'max_request_per_minute' => $this->max_request_per_minute,
                 ]
             ]);
-        });
+        }, false);
     }
 
     private function paginate(array $body, $entity, $pages)
